@@ -35,7 +35,3 @@ wheels/
 # OS
 .DS_Store
 Thumbs.db
-
-# Data files (keep CSV but ignore large model files if needed)
-*.pkl
-*.joblib

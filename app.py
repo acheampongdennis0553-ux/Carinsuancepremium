@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-import pickle
 import numpy as np
-import os
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import LabelEncoder
 import traceback
@@ -18,13 +16,15 @@ try:
     def load_or_train_model():
         """Load model and encoders, or train if they don't exist"""
         try:
+            import pickle
             with open('insurance_model.pkl', 'rb') as f:
                 model = pickle.load(f)
             with open('label_encoders.pkl', 'rb') as f:
                 label_encoders = pickle.load(f)
+            st.write("✓ Loaded cached model")
             return model, label_encoders
-        except FileNotFoundError:
-            st.info("Training model for the first time... Please wait.")
+        except:
+            st.write("Training model... this may take a moment")
             
             # Load data
             df = pd.read_csv('car_insurance_premium_regression_dataset (1) (1).csv')
@@ -53,13 +53,16 @@ try:
             model.fit(X, y)
             
             # Save model and encoders
-            with open('insurance_model.pkl', 'wb') as f:
-                pickle.dump(model, f)
+            try:
+                import pickle
+                with open('insurance_model.pkl', 'wb') as f:
+                    pickle.dump(model, f)
+                with open('label_encoders.pkl', 'wb') as f:
+                    pickle.dump(label_encoders, f)
+            except:
+                pass  # If save fails, we still have the model in memory
             
-            with open('label_encoders.pkl', 'wb') as f:
-                pickle.dump(label_encoders, f)
-            
-            st.success("Model trained and saved!")
+            st.write("✓ Model trained")
             return model, label_encoders
 
     # Load model and encoders
@@ -72,7 +75,7 @@ try:
 
     with col1:
         car_age = st.number_input("Car Age (years)", min_value=0, max_value=30, value=5)
-        car_value = st.number_input("Car Value (₹)", min_value=100000, max_value=5000000, value=1000000, step=50000)
+        car_value = st.number_input("Car Value (Rupees)", min_value=100000, max_value=5000000, value=1000000, step=50000)
         engine_cc = st.number_input("Engine CC", min_value=600, max_value=2500, value=1500, step=100)
 
     with col2:
@@ -103,23 +106,26 @@ try:
     # Encode categorical variables
     for col in ['fuel_type', 'transmission', 'accident_history', 'city_tier']:
         if col in label_encoders:
-            input_df[col] = label_encoders[col].transform(input_df[col])
+            try:
+                input_df[col] = label_encoders[col].transform(input_df[col])
+            except:
+                st.error(f"Could not encode {col}")
 
     # Make prediction
-    if st.button("🔮 Predict Premium", key="predict"):
+    if st.button("Predict Premium"):
         try:
             prediction = model.predict(input_df)[0]
             
             st.markdown("---")
-            st.success(f"### Estimated Annual Premium: ₹{prediction:,.2f}")
+            st.success(f"### Estimated Annual Premium: Rs {prediction:,.2f}")
             
             # Display input summary
             st.subheader("Input Summary")
             summary_col1, summary_col2, summary_col3 = st.columns(3)
             with summary_col1:
                 st.metric("Car Age", f"{car_age} years")
-                st.metric("Car Value", f"₹{car_value:,}")
-                st.metric("Engine CC", f"{engine_cc} cc")
+                st.metric("Car Value", f"Rs {car_value:,}")
+                st.metric("Engine CC", f"{engine_cc}")
             
             with summary_col2:
                 st.metric("Fuel Type", fuel_type.upper())
@@ -135,7 +141,7 @@ try:
             st.error(f"Error making prediction: {str(e)}")
 
     st.markdown("---")
-    st.info("💡 This model predicts your car insurance premium based on your car and personal details.")
+    st.info("This model predicts your car insurance premium based on your car and personal details.")
 
 except Exception as e:
     st.error(f"Application Error: {str(e)}")
