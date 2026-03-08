@@ -1,135 +1,90 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import pickle
-from sklearn.preprocessing import LabelEncoder
+import numpy as np
 
-# Load model and preprocessing objects
-with open('model.pkl', 'rb') as f:
-    model = pickle.load(f)
-
-with open('scaler.pkl', 'rb') as f:
-    scaler = pickle.load(f)
-
-with open('label_encoders.pkl', 'rb') as f:
-    label_encoders = pickle.load(f)
-
-# Page configuration
-st.set_page_config(
-    page_title="Car Insurance Premium Predictor",
-    page_icon="🚗",
-    layout="wide"
-)
+# Set page config
+st.set_page_config(page_title="Car Insurance Premium Predictor", layout="wide")
 
 st.title("🚗 Car Insurance Premium Predictor")
 st.markdown("---")
 
-# Create columns for better layout
-col1, col2 = st.columns(2)
+# Load model and encoders
+try:
+    with open('insurance_model.pkl', 'rb') as f:
+        model = pickle.load(f)
+    with open('label_encoders.pkl', 'rb') as f:
+        label_encoders = pickle.load(f)
+except FileNotFoundError:
+    st.error("Model files not found. Please run train_model.py first.")
+    st.stop()
+
+# Create input columns
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("Vehicle Information")
-    car_age = st.slider("Car Age (years)", min_value=0, max_value=14, value=5)
-    car_value = st.number_input("Car Value (₹)", min_value=100000, max_value=3000000, value=1500000, step=50000)
-    engine_cc = st.number_input("Engine CC", min_value=500, max_value=5000, value=1500, step=100)
-    fuel_type = st.selectbox("Fuel Type", options=['Diesel', 'Electric', 'Hybrid', 'Petrol'])
+    car_age = st.number_input("Car Age (years)", min_value=0, max_value=30, value=5)
+    car_value = st.number_input("Car Value (₹)", min_value=100000, max_value=5000000, value=1000000, step=50000)
+    engine_cc = st.number_input("Engine CC", min_value=600, max_value=2500, value=1500, step=100)
 
 with col2:
-    st.subheader("Owner & Policy Information")
-    transmission = st.selectbox("Transmission", options=['Automatic', 'Manual'])
-    owner_age = st.slider("Owner Age (years)", min_value=18, max_value=80, value=40)
-    ncb_percent = st.slider("No Claim Bonus (%)", min_value=0, max_value=50, value=25, step=5)
-    accident_history = st.selectbox("Accident History", options=['No', 'Yes'])
-    city_tier = st.selectbox("City Tier", options=['tier1', 'tier2', 'tier3'])
+    fuel_type = st.selectbox("Fuel Type", ["petrol", "diesel", "hybrid", "electric"])
+    transmission = st.selectbox("Transmission", ["manual", "automatic"])
+    owner_age = st.number_input("Owner Age (years)", min_value=18, max_value=80, value=35)
 
-st.markdown("---")
+with col3:
+    ncb_percent = st.number_input("NCB % (No Claim Bonus)", min_value=0, max_value=100, value=20, step=5)
+    accident_history = st.selectbox("Accident History", ["no", "yes"])
+    city_tier = st.selectbox("City Tier", ["tier1", "tier2", "tier3"])
 
-# Prepare data for prediction
-if st.button("🔮 Predict Premium", key="predict_btn"):
+# Prepare input data
+input_data = {
+    'car_age_years': [car_age],
+    'car_value': [car_value],
+    'engine_cc': [engine_cc],
+    'fuel_type': [fuel_type],
+    'transmission': [transmission],
+    'owner_age': [owner_age],
+    'ncb_percent': [ncb_percent],
+    'accident_history': [accident_history],
+    'city_tier': [city_tier]
+}
+
+input_df = pd.DataFrame(input_data)
+
+# Encode categorical variables
+for col in ['fuel_type', 'transmission', 'accident_history', 'city_tier']:
+    if col in label_encoders:
+        input_df[col] = label_encoders[col].transform(input_df[col])
+
+# Make prediction
+if st.button("🔮 Predict Premium", key="predict"):
     try:
-        # Create input dataframe with same structure as training data
-        input_data = pd.DataFrame({
-            'car_age_years': [car_age],
-            'car_value': [car_value],
-            'engine_cc': [engine_cc],
-            'fuel_type': [fuel_type],
-            'transmission': [transmission],
-            'owner_age': [owner_age],
-            'ncb_percent': [ncb_percent],
-            'accident_history': [accident_history],
-            'city_tier': [city_tier]
-        })
-        
-        # Encode categorical variables using the same label encoders
-        categorical_columns = ['fuel_type', 'transmission', 'accident_history', 'city_tier']
-        for col in categorical_columns:
-            input_data[col] = label_encoders[col].transform(input_data[col])
-        
-        # Scale features
-        input_scaled = scaler.transform(input_data)
-        
-        # Make prediction
-        prediction = model.predict(input_scaled)[0]
-        
-        # Display results
-        st.markdown("---")
-        st.subheader("📊 Prediction Results")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(
-                label="Estimated Annual Premium",
-                value=f"₹{prediction:,.2f}",
-                delta=None
-            )
-        
-        with col2:
-            # Calculate monthly equivalent
-            monthly_premium = prediction / 12
-            st.metric(
-                label="Estimated Monthly Premium",
-                value=f"₹{monthly_premium:,.2f}",
-                delta=None
-            )
+        prediction = model.predict(input_df)[0]
         
         st.markdown("---")
-        st.success("✅ Prediction completed successfully!")
+        st.success(f"### Estimated Annual Premium: ₹{prediction:,.2f}")
         
-        # Additional info
-        st.info(
-            f"**Input Summary:**\n\n"
-            f"- Car Age: {car_age} years\n"
-            f"- Car Value: ₹{car_value:,.0f}\n"
-            f"- Engine: {engine_cc} CC\n"
-            f"- Fuel Type: {fuel_type}\n"
-            f"- Transmission: {transmission}\n"
-            f"- Owner Age: {owner_age} years\n"
-            f"- No Claim Bonus: {ncb_percent}%\n"
-            f"- Accident History: {accident_history}\n"
-            f"- City Tier: {city_tier}"
-        )
+        # Display input summary
+        st.subheader("Input Summary")
+        summary_col1, summary_col2, summary_col3 = st.columns(3)
+        with summary_col1:
+            st.metric("Car Age", f"{car_age} years")
+            st.metric("Car Value", f"₹{car_value:,}")
+            st.metric("Engine CC", f"{engine_cc} cc")
         
+        with summary_col2:
+            st.metric("Fuel Type", fuel_type.upper())
+            st.metric("Transmission", transmission.upper())
+            st.metric("Owner Age", f"{owner_age} years")
+        
+        with summary_col3:
+            st.metric("NCB Bonus", f"{ncb_percent}%")
+            st.metric("Accident History", accident_history.upper())
+            st.metric("City Tier", city_tier.upper())
+            
     except Exception as e:
-        st.error(f"❌ Error making prediction: {str(e)}")
+        st.error(f"Error making prediction: {str(e)}")
 
 st.markdown("---")
-st.markdown(
-    """
-    ### 📈 About This Model
-    
-    This machine learning model predicts car insurance premiums based on:
-    - Vehicle characteristics (age, value, engine specifications)
-    - Owner information (age, claim history)
-    - Policy factors (no claim bonus, city tier)
-    
-    **Model Performance:**
-    - R² Score: 0.9192 (92% of variance explained)
-    - RMSE: ₹5,797.50
-    - MAE: ₹4,634.50
-    
-    **Key Feature Importance:**
-    1. Car Value (90.5%)
-    2. Car Age (4.3%)
-    3. Accident History (1.6%)
-    """
-)
+st.info("💡 This model predicts your car insurance premium based on your car and personal details.")
