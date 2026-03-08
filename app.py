@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import pickle
 import numpy as np
+import os
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import LabelEncoder
 
 # Set page config
 st.set_page_config(page_title="Car Insurance Premium Predictor", layout="wide")
@@ -9,15 +12,57 @@ st.set_page_config(page_title="Car Insurance Premium Predictor", layout="wide")
 st.title("🚗 Car Insurance Premium Predictor")
 st.markdown("---")
 
+# Function to train model
+@st.cache_resource
+def load_or_train_model():
+    """Load model and encoders, or train if they don't exist"""
+    try:
+        with open('insurance_model.pkl', 'rb') as f:
+            model = pickle.load(f)
+        with open('label_encoders.pkl', 'rb') as f:
+            label_encoders = pickle.load(f)
+        return model, label_encoders
+    except FileNotFoundError:
+        st.info("Training model for the first time... Please wait.")
+        
+        # Load data
+        df = pd.read_csv('car_insurance_premium_regression_dataset (1) (1).csv')
+        
+        # Fill missing values
+        for col in df.select_dtypes(include=['float64']).columns:
+            df[col].fillna(df[col].median(), inplace=True)
+        
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col].fillna(df[col].mode()[0] if len(df[col].mode()) > 0 else 'unknown', inplace=True)
+        
+        # Prepare data
+        X = df.drop('annual_car_premium', axis=1)
+        y = df['annual_car_premium']
+        
+        # Encode categorical variables
+        label_encoders = {}
+        for col in ['fuel_type', 'transmission', 'accident_history', 'city_tier']:
+            if col in X.columns:
+                le = LabelEncoder()
+                X[col] = le.fit_transform(X[col])
+                label_encoders[col] = le
+        
+        # Train model
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X, y)
+        
+        # Save model and encoders
+        with open('insurance_model.pkl', 'wb') as f:
+            pickle.dump(model, f)
+        
+        with open('label_encoders.pkl', 'wb') as f:
+            pickle.dump(label_encoders, f)
+        
+        st.success("Model trained and saved!")
+        return model, label_encoders
+
 # Load model and encoders
-try:
-    with open('insurance_model.pkl', 'rb') as f:
-        model = pickle.load(f)
-    with open('label_encoders.pkl', 'rb') as f:
-        label_encoders = pickle.load(f)
-except FileNotFoundError:
-    st.error("Model files not found. Please run train_model.py first.")
-    st.stop()
+model, label_encoders = load_or_train_model()
 
 # Create input columns
 col1, col2, col3 = st.columns(3)
